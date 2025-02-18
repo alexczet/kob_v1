@@ -98,6 +98,7 @@ export default function Home() {
               console.log('Audio Playback Started Successfully');
               setIsPlaying(true);
               setAudioQueue(remainingQueue);
+            
             })
             .catch((error) => {
               console.error('Detailed Playback Error:', {
@@ -108,9 +109,11 @@ export default function Home() {
               
               setIsPlaying(false);
               setAudioQueue(remainingQueue);
+            
             })
             .finally(() => {
               setIsSpeechRecognitionEnabled(true);
+              setAudioQueue(remainingQueue);
             });
         } catch (error) {
           console.error('Audio Playback Setup Error:', error);
