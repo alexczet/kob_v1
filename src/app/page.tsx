@@ -242,7 +242,7 @@ export default function Home() {
   const startListening = () => {
     if (recognition.current && isSpeechRecognitionEnabled) {
       try {
-        recognition.current.start();
+        (recognition.current as SpeechRecognition).start();
         setIsListening(true);
       } catch (error) {
         console.error('Speech recognition start error:', error);
@@ -254,7 +254,7 @@ export default function Home() {
 
   const stopListening = () => {
     if (recognition.current) {
-      recognition.current.stop();
+      (recognition.current as SpeechRecognition).stop();
       setIsListening(false);
     }
   };
