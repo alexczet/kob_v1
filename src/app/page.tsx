@@ -45,14 +45,19 @@ export default function Home() {
       }
 
       const url = URL.createObjectURL(blob);
-      
+
       setAudioQueue(prev => [...prev, url]);
-      
+
       if (!isPlaying) {
         playNextAudio();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Audio Generation Error:', error);
+      // Display an error message to the user
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Error generating audio: ${error.message || 'Unknown error'}`
+      }]);
     }
   };
 
@@ -135,11 +140,11 @@ export default function Home() {
             });
           });
       };
-      
+
       audio.onerror = (e) => {
         console.error('Detailed Manual Audio Error:', {
           type: e.type,
-          error: e.target.error
+          error: (e.target as HTMLAudioElement).error
         });
       };
     }
@@ -297,7 +302,7 @@ export default function Home() {
             )}
 
             {/* Add the debug button here */}
-            <Button 
+            <Button
               variant="default"
               className="w-12 h-12 bg-purple-500"
               onClick={debugAudioPlayback}
@@ -307,6 +312,7 @@ export default function Home() {
           </div>
         </CardContent>
       </Card>
+      <audio ref={audioRef} onEnded={playNextAudio} />
     </div>
   );
 }
