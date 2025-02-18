@@ -14,6 +14,7 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSpeechRecognitionEnabled, setIsSpeechRecognitionEnabled] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [audioQueue, setAudioQueue] = useState<string[]>([]);
   const recognition = useRef<SpeechRecognition | null>(null);
@@ -106,6 +107,9 @@ export default function Home() {
               
               setIsPlaying(false);
               setAudioQueue(remainingQueue);
+            })
+            .finally(() => {
+              setIsSpeechRecognitionEnabled(true);
             });
         } catch (error) {
           console.error('Audio Playback Setup Error:', error);
@@ -159,8 +163,15 @@ export default function Home() {
         recognition.current.interimResults = false;
 
         recognition.current.onresult = async (event: SpeechRecognitionEvent) => {
-          const text = event.results[event.results.length - 1][0].transcript;
-          setMessages(prev => [...prev, { role: 'user', content: text }]);
+          const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
+          
+          // Check for interrupt trigger words
+          if (transcript.includes("stop") || transcript.includes("cancel")) {
+            stopAudio();
+            return;
+          }
+
+          setMessages(prev => [...prev, { role: 'user', content: transcript }]);
           
           try {
             setIsProcessing(true);
@@ -203,6 +214,16 @@ export default function Home() {
         };
       }
     }
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isSpeechRecognitionEnabled) {
+        startListening();
+      } else {
+        stopListening();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (audioRef.current) {
@@ -210,8 +231,29 @@ export default function Home() {
         audioRef.current = null;
       }
       audioQueue.forEach(URL.revokeObjectURL);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [generateAndQueueAudio, audioQueue]);
+  }, [generateAndQueueAudio, audioQueue, isSpeechRecognitionEnabled]);
+
+  const startListening = () => {
+    if (recognition.current && isSpeechRecognitionEnabled) {
+      try {
+        recognition.current.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Speech recognition start error:', error);
+        setIsListening(false);
+        alert('Error starting speech recognition. Please try again.');
+      }
+    }
+  };
+
+  const stopListening = () => {
+    if (recognition.current) {
+      recognition.current.stop();
+      setIsListening(false);
+    }
+  };
 
   const toggleListening = () => {
     if (!recognition.current) {
@@ -219,17 +261,10 @@ export default function Home() {
       return;
     }
 
-    try {
-      if (isListening) {
-        recognition.current?.stop();
-      } else {
-        recognition.current?.start();
-      }
-      setIsListening(!isListening);
-    } catch (error) {
-      console.error('Speech recognition error:', error);
-      setIsListening(false);
-      alert('Error with speech recognition. Please try again.');
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
     }
   };
 
@@ -240,6 +275,8 @@ export default function Home() {
     }
     setAudioQueue([]);
     setIsPlaying(false);
+    setIsSpeechRecognitionEnabled(true);
+    startListening();
   };
 
   return (
@@ -274,16 +311,16 @@ export default function Home() {
               onClick={toggleListening}
               variant={isListening ? "destructive" : "default"}
               className="w-12 h-12"
-              disabled={isProcessing || isPlaying}
+              disabled={isProcessing}
             >
               <Mic className={`h-6 w-6 ${isListening ? 'animate-pulse' : ''}`} />
             </Button>
             
-            <Button 
+            <Button
               variant="outline"
               className={`w-12 h-12 ${
-                isPlaying 
-                  ? 'bg-green-500 text-white hover:bg-green-600' 
+                isPlaying
+                  ? 'bg-green-500 text-white hover:bg-green-600'
                   : 'bg-orange-500 text-white hover:bg-orange-600'
               }`}
               onClick={() => audioQueue.length > 0 ? playNextAudio() : generateAndQueueAudio(messages.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '')}
@@ -293,7 +330,7 @@ export default function Home() {
             </Button>
 
             {isPlaying && (
-              <Button 
+              <Button
                 variant="destructive"
                 className="w-12 h-12"
                 onClick={stopAudio}
@@ -313,7 +350,7 @@ export default function Home() {
           </div>
         </CardContent>
       </Card>
-      <audio ref={audioRef} onEnded={playNextAudio} />
+      <audio ref={audioRef} onEnded={playNextAudio}  />
     </div>
   );
 }
