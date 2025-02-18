@@ -91,6 +91,7 @@ export default function Home() {
           };
 
           const playPromise = audioRef.current.play();
+          setIsSpeechRecognitionEnabled(false);
           
           playPromise
             .then(() => {
