@@ -127,7 +127,7 @@ export default function Home() {
     }
     
     console.groupEnd();
-  }, [audioQueue]);
+  }, [audioQueue, generateAndQueueAudio]);
 
   const debugAudioPlayback = () => {
     if (audioQueue.length > 0) {
@@ -203,9 +203,9 @@ export default function Home() {
             console.error('Error getting AI response:', error);
             setMessages(prev => [...prev, {
               role: 'assistant',
-              content: error instanceof Error 
-                ? error.message 
-                : 'Sorry, I encountered an error. Please try again in a moment.' 
+              content: error instanceof Error
+                ? error.message
+                : 'Sorry, I encountered an error. Please try again in a moment.'
             }]);
           } finally {
             setIsProcessing(false);
@@ -220,7 +220,7 @@ export default function Home() {
     }
     
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && isSpeechRecognitionEnabled) {
+      if (document.visibilityState === 'visible' && isSpeechRecognitionEnabled && recognition.current) {
         startListening();
       } else {
         stopListening();
