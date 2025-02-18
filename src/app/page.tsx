@@ -182,11 +182,12 @@ export default function Home() {
             
             setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
             
-            await generateAndQueueAudio(data.response);
+            // Immediately generate and queue audio for the AI response
+            generateAndQueueAudio(data.response);
           } catch (error) {
             console.error('Error getting AI response:', error);
-            setMessages(prev => [...prev, { 
-              role: 'assistant', 
+            setMessages(prev => [...prev, {
+              role: 'assistant',
               content: error instanceof Error 
                 ? error.message 
                 : 'Sorry, I encountered an error. Please try again in a moment.' 
