@@ -1,101 +1,312 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Mic, Speaker, X } from "lucide-react";
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [audioQueue, setAudioQueue] = useState<string[]>([]);
+  const recognition = useRef<SpeechRecognition | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  const generateAndQueueAudio = async (text: string) => {
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('TTS API Error:', errorText);
+        throw new Error('Failed to generate speech');
+      }
+
+      const blob = await response.blob();
+      console.log('Audio Blob Details:', {
+        type: blob.type,
+        size: blob.size
+      });
+
+      if (!['audio/wav', 'audio/mpeg', 'audio/mp3'].includes(blob.type)) {
+        console.error('Invalid audio mime type:', blob.type);
+        throw new Error('Invalid audio format');
+      }
+
+      const url = URL.createObjectURL(blob);
+      
+      setAudioQueue(prev => [...prev, url]);
+      
+      if (!isPlaying) {
+        playNextAudio();
+      }
+    } catch (error) {
+      console.error('Audio Generation Error:', error);
+    }
+  };
+
+  const playNextAudio = useCallback(() => {
+    console.group('Audio Playback Debug');
+    console.log('Audio Queue:', audioQueue);
+    console.log('Is Playing:', isPlaying);
+    
+    if (audioQueue.length > 0) {
+      const [nextAudio, ...remainingQueue] = audioQueue;
+      
+      console.log('Next Audio URL:', nextAudio);
+      
+      if (audioRef.current) {
+        try {
+          console.log('Audio Ref Properties:', {
+            src: audioRef.current.src,
+            paused: audioRef.current.paused,
+            duration: audioRef.current.duration
+          });
+
+          audioRef.current.src = nextAudio;
+          
+          audioRef.current.onerror = (e) => {
+            console.error('Detailed Audio Element Error:', {
+              type: e.type,
+              target: e.target,
+              currentSrc: audioRef.current?.currentSrc
+            });
+          };
+
+          const playPromise = audioRef.current.play();
+          
+          playPromise
+            .then(() => {
+              console.log('Audio Playback Started Successfully');
+              setIsPlaying(true);
+              setAudioQueue(remainingQueue);
+            })
+            .catch((error) => {
+              console.error('Detailed Playback Error:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+              });
+              
+              setIsPlaying(false);
+              setAudioQueue(remainingQueue);
+            });
+        } catch (error) {
+          console.error('Audio Playback Setup Error:', error);
+        }
+      } else {
+        console.error('Audio Ref is null');
+      }
+    } else {
+      console.log('No audio in queue');
+      setIsPlaying(false);
+    }
+    
+    console.groupEnd();
+  }, [audioQueue]);
+
+  const debugAudioPlayback = () => {
+    if (audioQueue.length > 0) {
+      const audioUrl = audioQueue[0];
+      console.log('Debugging Audio URL:', audioUrl);
+      
+      const audio = new Audio(audioUrl);
+      
+      audio.oncanplaythrough = () => {
+        console.log('Audio can play through');
+        audio.play()
+          .then(() => console.log('Manual play successful'))
+          .catch((error) => {
+            console.error('Detailed Manual Play Error:', {
+              name: error.name,
+              message: error.message,
+              stack: error.stack
+            });
+          });
+      };
+      
+      audio.onerror = (e) => {
+        console.error('Detailed Manual Audio Error:', {
+          type: e.type,
+          error: e.target.error
+        });
+      };
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognition.current = new SpeechRecognition();
+        recognition.current.continuous = true;
+        recognition.current.interimResults = false;
+
+        recognition.current.onresult = async (event: SpeechRecognitionEvent) => {
+          const text = event.results[event.results.length - 1][0].transcript;
+          setMessages(prev => [...prev, { role: 'user', content: text }]);
+          
+          try {
+            setIsProcessing(true);
+            const response = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+              throw new Error(data.error || 'Failed to get AI response');
+            }
+            
+            if (!data.response) {
+              throw new Error('No response from AI');
+            }
+            
+            setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+            
+            await generateAndQueueAudio(data.response);
+          } catch (error) {
+            console.error('Error getting AI response:', error);
+            setMessages(prev => [...prev, { 
+              role: 'assistant', 
+              content: error instanceof Error 
+                ? error.message 
+                : 'Sorry, I encountered an error. Please try again in a moment.' 
+            }]);
+          } finally {
+            setIsProcessing(false);
+          }
+        };
+
+        recognition.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+        };
+      }
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      audioQueue.forEach(URL.revokeObjectURL);
+    };
+  }, [generateAndQueueAudio, audioQueue]);
+
+  const toggleListening = () => {
+    if (!recognition.current) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    try {
+      if (isListening) {
+        recognition.current?.stop();
+      } else {
+        recognition.current?.start();
+      }
+      setIsListening(!isListening);
+    } catch (error) {
+      console.error('Speech recognition error:', error);
+      setIsListening(false);
+      alert('Error with speech recognition. Please try again.');
+    }
+  };
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setAudioQueue([]);
+    setIsPlaying(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 p-8">
+      <Card className="mx-auto max-w-2xl bg-gray-800">
+        <CardHeader>
+          <h1 className="text-2xl font-bold text-center text-white">Voice Chat Bot</h1>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4 mb-4">
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`p-4 rounded-lg ${
+                  message.role === 'user' 
+                    ? 'bg-blue-600 text-white ml-auto max-w-[80%]' 
+                    : 'bg-gray-600 text-white mr-auto max-w-[80%]'
+                }`}
+              >
+                {message.content}
+              </div>
+            ))}
+            {isProcessing && (
+              <div className="bg-gray-600 text-white mr-auto max-w-[80%] p-4 rounded-lg animate-pulse">
+                Thinking...
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-2 justify-center">
+            <Button 
+              onClick={toggleListening}
+              variant={isListening ? "destructive" : "default"}
+              className="w-12 h-12"
+              disabled={isProcessing || isPlaying}
+            >
+              <Mic className={`h-6 w-6 ${isListening ? 'animate-pulse' : ''}`} />
+            </Button>
+            
+            <Button 
+              variant="outline"
+              className={`w-12 h-12 ${
+                isPlaying 
+                  ? 'bg-green-500 text-white hover:bg-green-600' 
+                  : 'bg-orange-500 text-white hover:bg-orange-600'
+              }`}
+              onClick={() => audioQueue.length > 0 ? playNextAudio() : generateAndQueueAudio(messages.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '')}
+              disabled={!messages.some(m => m.role === 'assistant') || isProcessing}
+            >
+              <Speaker className={`h-6 w-6 ${isPlaying ? 'animate-pulse' : ''}`} />
+            </Button>
+
+            {isPlaying && (
+              <Button 
+                variant="destructive"
+                className="w-12 h-12"
+                onClick={stopAudio}
+              >
+                <X className="h-6 w-6" />
+              </Button>
+            )}
+
+            {/* Add the debug button here */}
+            <Button 
+              variant="default"
+              className="w-12 h-12 bg-purple-500"
+              onClick={debugAudioPlayback}
+            >
+              🔊
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
